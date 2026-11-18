@@ -974,13 +974,13 @@
         cellsSvg += `</g>`;
       }
 
-      // 格線與 5x5 輔助線
+      // 格線與 5x5 輔助線（填色後依然清楚分明）
       let linesSvg = "";
       for (let k = 1; k < 10; k++) {
         const pos = k * cellSz;
         const isMid = k === 5;
-        const sw = isMid ? 2.2 : 0.9;
-        const col = isMid ? "#475569" : "#cbd5e1";
+        const sw = isMid ? 2.6 : 1.35;
+        const col = isMid ? "#0f172a" : "#475569";
         linesSvg += `<line x1="${pos}" y1="0" x2="${pos}" y2="300" stroke="${col}" stroke-width="${sw}" />`;
         linesSvg += `<line x1="0" y1="${pos}" x2="300" y2="${pos}" stroke="${col}" stroke-width="${sw}" />`;
       }
@@ -988,7 +988,7 @@
       return `<svg viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg">
         ${cellsSvg}
         ${linesSvg}
-        <rect x="1.5" y="1.5" width="297" height="297" fill="none" stroke="#1e3a5f" stroke-width="3" rx="4" />
+        <rect x="1.6" y="1.6" width="296.8" height="296.8" fill="none" stroke="#0f172a" stroke-width="3.2" rx="4" />
       </svg>`;
     }
 
