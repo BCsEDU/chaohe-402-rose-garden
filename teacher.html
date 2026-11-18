@@ -1322,7 +1322,7 @@
             ${buildGridSvg(g, { showRoses: state.showRoses })}
             ${
               state.showcaseShowMath
-                ? `<div style="font-size:13.5px;font-weight:800;color:#334155">灰 ${c.G} (0.${String(c.G).padStart(2, "0")})・紅 ${c.R} (0.${String(c.R).padStart(2, "0")})・藍 ${c.B} (0.${String(c.B).padStart(2, "0")})・白 ${c.whiteEff} (0.${String(c.whiteEff).padStart(2, "0")})</div>`
+                ? `<div style="font-size:13.5px;font-weight:800;color:#334155">灰 ${c.G} (${(c.G / 100).toFixed(2)})・紅 ${c.R} (${(c.R / 100).toFixed(2)})・藍 ${c.B} (${(c.B / 100).toFixed(2)})・白 ${c.whiteEff} (${(c.whiteEff / 100).toFixed(2)})</div>`
                 : `<div style="font-size:13px;font-weight:800;color:#64748b">👀 請觀察不同造型是否都符合 0.25、0.5、0.05、0.20</div>`
             }
           </div>`;
@@ -1336,10 +1336,14 @@
     });
     $("cmpRoseBtn").addEventListener("click", () => {
       state.showRoses = !state.showRoses;
+      $("btnPreviewMode").classList.toggle("active", state.showRoses);
+      $("btnPreviewMode").textContent = state.showRoses ? "🌹 玫瑰花預覽：開" : "🎨 純色塊預覽：開";
       renderAll();
     });
     $("cmpAnonBtn").addEventListener("click", () => {
       state.anonMode = !state.anonMode;
+      $("btnAnonMode").classList.toggle("warn-on", state.anonMode);
+      $("btnAnonMode").textContent = state.anonMode ? "🙈 匿名展示：開" : "🙈 匿名展示：關";
       renderAll();
     });
     $("cmpMathBtn").addEventListener("click", () => {

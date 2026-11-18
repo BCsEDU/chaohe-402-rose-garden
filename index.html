@@ -907,6 +907,30 @@
 
     /* 直向 iPad / 平板響應式 */
     @media (max-width: 900px) {
+      header {
+        padding: 0 8px;
+        gap: 6px;
+      }
+      .hdr-left,
+      .hdr-right {
+        gap: 5px;
+      }
+      .logo {
+        font-size: 15px;
+      }
+      .group-pill {
+        padding: 5px 9px;
+        font-size: 12.5px;
+      }
+      .sync-badge {
+        padding: 4px 8px;
+        font-size: 11.5px;
+      }
+      .hdr-btn {
+        min-height: 34px;
+        padding: 0 8px;
+        font-size: 12px;
+      }
       main {
         grid-template-columns: 1fr;
         grid-template-rows: auto minmax(0, 1fr);
@@ -925,12 +949,14 @@
         grid-template-columns: repeat(5, minmax(0, 1fr));
       }
     }
+    @media (max-width: 780px) {
+      .logo-text {
+        display: none;
+      }
+    }
     @media (max-width: 600px) {
       .seat-grid {
         grid-template-columns: repeat(4, minmax(0, 1fr));
-      }
-      .logo {
-        font-size: 15px;
       }
     }
   </style>
@@ -969,7 +995,7 @@
   <div id="app">
     <header>
       <div class="hdr-left">
-        <div class="logo">🌹 正方形玫瑰花圃</div>
+        <div class="logo">🌹 <span class="logo-text">正方形玫瑰花圃</span></div>
         <button type="button" class="group-pill" id="btnChangeGroup" title="點選更換組員座號">
           👥 <span id="groupLabel">未組隊</span>
         </button>
@@ -1489,8 +1515,9 @@
       $("groupLabel").textContent = `${noTxt}${formatSeatsText(state.seats)}`;
     }
 
-    /* ---- 雲端自動同步 ---- */
+    /* ---- 雲端自動同步（序列化防覆蓋 + 老師清空偵測） ---- */
     let saveTimer = 0;
+    let syncChain = Promise.resolve();
     function scheduleSync(immediate = false) {
       saveLocal();
       if (!state.groupKey) return;
@@ -1504,26 +1531,52 @@
       }
     }
 
-    async function flushSync() {
-      if (!state.groupKey) return;
-      try {
-        const res = await apiCall({
-          action: "save",
-          group_key: state.groupKey,
-          grid: state.grid,
-          title: state.title,
-        });
-        if (res?.group) {
-          state.isCompleted = Boolean(res.group.is_completed);
-          updateCountsUI();
+    function handleGroupResetByTeacher() {
+      state.groupKey = null;
+      state.groupNo = null;
+      state.pendingSync = false;
+      clearTimeout(saveTimer);
+      saveLocal();
+      updateGroupHeader();
+      setSyncUI("err", "⚠️ 請重新選座號");
+      alert("⚠️ 這組的紀錄已被老師清空或重設，請重新點選組員座號登入！");
+      openLoginOverlay();
+    }
+
+    function flushSync() {
+      if (!state.groupKey) return Promise.resolve();
+      const targetKey = state.groupKey;
+      const targetGrid = state.grid;
+      const targetTitle = state.title;
+
+      syncChain = syncChain.then(async () => {
+        if (!state.groupKey || state.groupKey !== targetKey) return;
+        try {
+          const res = await apiCall({
+            action: "save",
+            group_key: targetKey,
+            grid: targetGrid,
+            title: targetTitle,
+          });
+          if (res?.group && state.grid === targetGrid) {
+            state.isCompleted = Boolean(res.group.is_completed);
+            updateCountsUI();
+          }
+          if (state.grid === targetGrid && state.title === targetTitle) {
+            state.pendingSync = false;
+            setSyncUI("ok", "☁️ 已同步給老師");
+          }
+          state.cloudEnabled = true;
+          saveLocal();
+        } catch (err) {
+          if (err.status === 404 && String(err.message).includes("group_not_active")) {
+            handleGroupResetByTeacher();
+            return;
+          }
+          setSyncUI("err", "⚠️ 待重連（已本機暫存）");
         }
-        state.pendingSync = false;
-        state.cloudEnabled = true;
-        setSyncUI("ok", "☁️ 已同步給老師");
-        saveLocal();
-      } catch (err) {
-        setSyncUI("err", "⚠️ 待重連（已本機暫存）");
-      }
+      });
+      return syncChain;
     }
 
     setInterval(() => {
@@ -1783,9 +1836,12 @@
       const btn = $("btnCheck");
       btn.disabled = true;
       btn.textContent = "⏳ 檢查中...";
+      clearTimeout(saveTimer);
+      state.pendingSync = false;
 
       let resData = null;
       try {
+        await syncChain;
         resData = await apiCall({
           action: "check",
           group_key: state.groupKey,
@@ -1795,6 +1851,12 @@
         state.cloudEnabled = true;
         setSyncUI("ok", "☁️ 已送出同步");
       } catch (err) {
+        if (err.status === 404 && String(err.message).includes("group_not_active")) {
+          btn.disabled = false;
+          updateCountsUI();
+          handleGroupResetByTeacher();
+          return;
+        }
         state.attempts += 1;
         const localEval = evaluateLocal(state.grid, state.attempts);
         resData = {

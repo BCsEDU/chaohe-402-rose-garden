@@ -319,52 +319,92 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      // 重新讀取目前佔用的 group_no（1..15）
-      const { data: refreshedRows, error: refErr } = await supabaseAdmin
-        .from("rose_garden_groups")
-        .select("group_no")
-        .eq("is_active", true);
+      // 重新讀取目前佔用的 group_no（1..15），遇併發搶號（23505）自動重試
+      let created: RoseGroupRow | null = null;
+      for (let attempt = 0; attempt < 6; attempt++) {
+        const { data: refreshedRows, error: refErr } = await supabaseAdmin
+          .from("rose_garden_groups")
+          .select("group_key, group_no")
+          .eq("is_active", true);
 
-      if (refErr) return jsonResponse({ error: refErr.message }, 500);
-      const usedNos = new Set((refreshedRows ?? []).map((r) => Number(r.group_no)));
-      let assignedNo = 0;
-      for (let n = 1; n <= MAX_GROUPS; n++) {
-        if (!usedNos.has(n)) {
-          assignedNo = n;
+        if (refErr) return jsonResponse({ error: refErr.message }, 500);
+
+        // 若同一秒內已有相同 group_key 搶先建立成功，直接還原
+        const concurrentSame = (refreshedRows ?? []).find((r) => r.group_key === groupKey);
+        if (concurrentSame) {
+          const { data: fullRow, error: fErr } = await supabaseAdmin
+            .from("rose_garden_groups")
+            .select("*")
+            .eq("group_key", groupKey)
+            .eq("is_active", true)
+            .maybeSingle();
+          if (fErr) return jsonResponse({ error: fErr.message }, 500);
+          if (fullRow) {
+            return jsonResponse({
+              status: "joined",
+              restored: true,
+              group: fullRow,
+            });
+          }
+        }
+
+        const usedNos = new Set((refreshedRows ?? []).map((r) => Number(r.group_no)));
+        let assignedNo = 0;
+        for (let n = 1; n <= MAX_GROUPS; n++) {
+          if (!usedNos.has(n)) {
+            assignedNo = n;
+            break;
+          }
+        }
+        if (assignedNo === 0) {
+          return jsonResponse(
+            { error: "目前已達 15 組同時登入上限，請點選原組別繼續，或請老師從後台清空未使用的組別。" },
+            409
+          );
+        }
+
+        const { data: upData, error: upErr } = await supabaseAdmin
+          .from("rose_garden_groups")
+          .upsert(
+            {
+              group_key: groupKey,
+              group_no: assignedNo,
+              seats,
+              grid: DEFAULT_GRID,
+              title: "",
+              note: "",
+              attempts: 0,
+              wrong_attempts: 0,
+              misconceptions: [],
+              is_completed: false,
+              completed_at: null,
+              is_featured: false,
+              is_active: true,
+            },
+            { onConflict: "group_key" }
+          )
+          .select("*")
+          .single();
+
+        if (!upErr && upData) {
+          created = upData as RoseGroupRow;
           break;
         }
+
+        const msg = String(upErr?.message || "");
+        if (upErr?.code === "23505" || msg.includes("duplicate key") || msg.includes("idx_rose_garden_groups_active_no")) {
+          await new Promise((r) => setTimeout(r, 25 + Math.floor(Math.random() * 45)));
+          continue;
+        }
+        return jsonResponse({ error: msg || "Failed to join group" }, 500);
       }
-      if (assignedNo === 0) {
+
+      if (!created) {
         return jsonResponse(
-          { error: "目前已達 15 組同時登入上限，請點選原組別繼續，或請老師從後台清空未使用的組別。" },
+          { error: "同時登入人數較多，請再點一次「開始種玫瑰花圃」即可進入！" },
           409
         );
       }
-
-      const { data: created, error: upErr } = await supabaseAdmin
-        .from("rose_garden_groups")
-        .upsert(
-          {
-            group_key: groupKey,
-            group_no: assignedNo,
-            seats,
-            grid: DEFAULT_GRID,
-            title: "",
-            note: "",
-            attempts: 0,
-            wrong_attempts: 0,
-            misconceptions: [],
-            is_completed: false,
-            completed_at: null,
-            is_featured: false,
-            is_active: true,
-          },
-          { onConflict: "group_key" }
-        )
-        .select("*")
-        .single();
-
-      if (upErr) return jsonResponse({ error: upErr.message }, 500);
 
       return jsonResponse({
         status: "joined",
