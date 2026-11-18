@@ -949,6 +949,24 @@
         grid-template-columns: repeat(5, minmax(0, 1fr));
       }
     }
+    @media (min-width: 700px) and (max-width: 900px) {
+      .sidebar {
+        max-height: none;
+        overflow-y: visible;
+        display: grid;
+        grid-template-columns: 0.92fr 1.28fr;
+        align-items: stretch;
+        gap: 8px;
+      }
+      .sidebar .card {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+      .sidebar .feedback-box {
+        grid-column: 1 / -1;
+      }
+    }
     @media (max-width: 780px) {
       .logo-text {
         display: none;
